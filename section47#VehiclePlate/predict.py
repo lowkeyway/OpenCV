@@ -63,12 +63,15 @@ class SVM:
 		self.model.save(fn)
 
 class LPRAlg:
+	DEBUG		= False
 	maxLength 	= 700
 	minArea 	= 2000
 
 	imgPlatList 	= []
 	colorList 		= []
-	imgPlatSplitList = []
+	imgPlatSplitList 	= []
+	charPlatList		= []
+	colorPlatList		= []
 
 	def __init__(self, imgPath = None):
 		if imgPath is None:
@@ -80,10 +83,22 @@ class LPRAlg:
 			print("Cannot load this picture!")
 			return None
 
-		# cv.imshow("imgOri", self.imgOri)
+		# self.cvImShow("imgOri", self.imgOri)
 
 		# 初始化SVM模型
 		self.modle = SVM(C=1, gamma=0.5)
+
+	def cvImShow(self, arg, *args, **kwargs):
+		if self.DEBUG:
+			cv.imshow(arg, *args, **kwargs)
+
+	def getNuCol(self):
+		self.findVehiclePlate()
+		self.splitCharacter()
+		self.svmTrain()
+		self.svmPredict()
+
+		return self.charPlatList, self.colorPlatList
 
 	def svmPredict(self):
 		if not os.path.exists("svm.xml"):
@@ -91,6 +106,7 @@ class LPRAlg:
 		# Step3: 加载和预测
 		self.modle.load("svm.xml")
 		for group, imgPlatSplit in enumerate(self.imgPlatSplitList):
+			charList = []
 			for index, imgPredict in enumerate(imgPlatSplit):
 				# imgPredict = cv.imread("Nu3.jpg")
 				if len(imgPredict.shape) == 3:
@@ -100,11 +116,13 @@ class LPRAlg:
 
 				imgPredict = cv.copyMakeBorder(imgPredict, 0, 0, w, w, cv.BORDER_CONSTANT, value=[0, 0, 0])
 				imgPredict = cv.resize(imgPredict, (SZ, SZ), interpolation=cv.INTER_AREA)
-				cv.imshow("imgPredict " + str(group) + str(index), imgPredict)
-				cv.imwrite("imgPredict_" + str(group) + str(index)+".png", imgPredict)
+				# self.cvImShow("imgPredict " + str(group) + str(index), imgPredict)
+				# cv.imwrite("imgPredict_" + str(group) + str(index)+".png", imgPredict)
 				imgPredict = preprocess_hog([imgPredict])
 				predictCh = self.modle.predict(imgPredict)
+				charList.append(chr(predictCh))
 				print(chr(predictCh))
+			self.charPlatList.append(charList)
 
 			print("imgPlatSplitList " + str(group))
 
@@ -141,7 +159,7 @@ class LPRAlg:
 			for file in files:
 				filePath = os.path.join(root, file)
 				imgTemp = cvImread(filePath)
-				# cv.imshow("imgTemp", imgTemp)
+				# self.cvImShow("imgTemp", imgTemp)
 				if len(imgTemp.shape) == 3:
 					imgTemp = cv.cvtColor(imgTemp, cv.COLOR_BGR2GRAY)
 				ret, imgTemp = cv.threshold(imgTemp, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
@@ -205,7 +223,7 @@ class LPRAlg:
 				print("[color, index]: ", color, index)
 				imgPlat = self.imgPlatList[index]
 				imgGary = cv.cvtColor(imgPlat, cv.COLOR_BGR2GRAY)
-				cv.imshow("split imgGary " + str(index), imgGary)
+				self.cvImShow("split imgGary " + str(index), imgGary)
 
 				# 绿色和黄色需要反色
 				if color is "green" or color is "yellow":
@@ -213,7 +231,7 @@ class LPRAlg:
 
 				# 转换为二进制，方便统计
 				ret, imgBin = cv.threshold(imgGary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
-				cv.imshow("split imgBin" + str(index), imgBin)
+				self.cvImShow("split imgBin" + str(index), imgBin)
 
 				# Step2: 做列方向的像素累加直方图，并找出波峰区间
 				# 对疑似车牌区域进行逐行累加统计，目的是为了去掉上下边框
@@ -239,7 +257,7 @@ class LPRAlg:
 
 				wave = max(wavePeakList, key=lambda x: x[1] - x[0])
 				imgBin =imgBin[wave[0]:wave[1]]
-				cv.imshow("imgBin " + str(index), imgBin)
+				self.cvImShow("imgBin " + str(index), imgBin)
 
 				# 对疑似车牌区域进行逐列累加，其目的是为了分割各个字符（汉字，分隔符，字母，数字）
 				yHistogram = np.sum(imgBin, axis=0)
@@ -247,8 +265,8 @@ class LPRAlg:
 				plt.subplot(1, 2, 2)
 				plt.title("Col Sum")
 				plt.plot(x, yHistogram)
-
-				plt.show()
+				if self.DEBUG:
+					plt.show()
 
 				yMin = np.min(yHistogram)
 				yAverage = np.sum(yHistogram) / yHistogram.shape[0]
@@ -305,8 +323,9 @@ class LPRAlg:
 				# Step4: 根据分割区间拆分图片
 				partCards = separateCard(imgBin, wavePeakList)
 				self.imgPlatSplitList.append(partCards)
+				self.colorPlatList.append(color)
 				for i, img in enumerate(partCards):
-					cv.imshow("partCards " + str(index) + str(i), img)
+					self.cvImShow("partCards " + str(index) + str(i), img)
 
 
 	def findVehiclePlate(self):
@@ -388,30 +407,30 @@ class LPRAlg:
 			img = cv.resize(img, (self.maxLength, int(h * resizeRate)), interpolation=cv.INTER_AREA)
 			w, h = self.maxLength, int(h*resizeRate)
 		imgWidth, imgHeight = w, h
-		cv.imshow("imgResize", img)
+		self.cvImShow("imgResize", img)
 
 		# Step2: Prepare to find contours
 		img = cv.GaussianBlur(img, (3, 3), 0)
 		imgGary = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-		cv.imshow("imgGary", imgGary)
+		self.cvImShow("imgGary", imgGary)
 
 		kernel = np.ones((20, 20), np.uint8)
 		imgOpen = cv.morphologyEx(imgGary, cv.MORPH_OPEN, kernel)
-		cv.imshow("imgOpen", imgOpen)
+		self.cvImShow("imgOpen", imgOpen)
 
 		imgOpenWeight = cv.addWeighted(imgGary, 1, imgOpen, -1, 0)
-		cv.imshow("imgOpenWeight", imgOpenWeight)
+		self.cvImShow("imgOpenWeight", imgOpenWeight)
 
 		ret, imgBin = cv.threshold(imgOpenWeight, 0, 255, cv.THRESH_OTSU + cv.THRESH_BINARY)
-		cv.imshow("imgBin", imgBin)
+		self.cvImShow("imgBin", imgBin)
 
 		imgEdge = cv.Canny(imgBin, 100, 200)
-		cv.imshow("imgEdge", imgEdge)
+		self.cvImShow("imgEdge", imgEdge)
 
 		kernel = np.ones((4, 19), np.uint8)
 		imgEdge = cv.morphologyEx(imgEdge, cv.MORPH_CLOSE, kernel)
 		imgEdge = cv.morphologyEx(imgEdge, cv.MORPH_OPEN, kernel)
-		cv.imshow("imgEdgeProcessed", imgEdge)
+		self.cvImShow("imgEdgeProcessed", imgEdge)
 
 		# Step3: Find Contours
 		image, contours, hierarchy = cv.findContours(imgEdge, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
@@ -437,7 +456,7 @@ class LPRAlg:
 				# Draw them out
 				cv.drawContours(imgDark, [box], 0, (0, 0, 255), 1)
 
-		cv.imshow("imgGaryContour", imgDark)
+		self.cvImShow("imgGaryContour", imgDark)
 		print("Vehicle number: ", len(carPlateList))
 
 		# Step5: Rect rectify
@@ -474,12 +493,12 @@ class LPRAlg:
 			newTriangle = np.float32([LT, newLB, newRB])
 			warpMat = cv.getAffineTransform(oldTriangle, newTriangle)
 			imgAffine = cv.warpAffine(img, warpMat, (imgWidth, imgHeight))
-			cv.imshow("imgAffine" + str(index), imgAffine)
+			self.cvImShow("imgAffine" + str(index), imgAffine)
 			# print("Index: ", index)
 
 			imgPlat = imgAffine[int(LT[1]):int(newLB[1]), int(newLB[0]):int(newRB[0])]
 			imgPlats.append(imgPlat)
-			cv.imshow("imgPlat" + str(index), imgPlat)
+			self.cvImShow("imgPlat" + str(index), imgPlat)
 
 		#Step6: Find correct place by color.
 		# colorList = []
@@ -552,7 +571,7 @@ class LPRAlg:
 			# if color != "green" or top < (bottom - top) // 4 \
 			# else imgPlat[top - (bottom - top) // 4:bottom, left:right]
 			imgPlats[index] = imgPlat[top:bottom, left:right]
-			cv.imshow("Vehicle Image " + str(index), imgPlats[index])
+			self.cvImShow("Vehicle Image " + str(index), imgPlats[index])
 			self.colorList.append(color)
 			self.imgPlatList.append(imgPlats[index])
 			print("---->Vehicle Image ", index)

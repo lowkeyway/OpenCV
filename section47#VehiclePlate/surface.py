@@ -6,6 +6,7 @@ import cv2 as cv
 from PIL import Image, ImageTk
 import numpy as np
 import sys, random, datetime, os, winreg, getpass, time, threading
+import predict
 
 # PicPath: Save the last picture file path, this picture should be opened successful.
 class LPRPath:
@@ -35,6 +36,7 @@ class LPRSurface(Tk):
 	isPicProcessing = False
 	root 			= None
 	videoThreadRun	= False
+	entryPlateNumList = []
 
 	def resizePicture(self, imgCV):
 		if imgCV is None:
@@ -99,6 +101,22 @@ class LPRSurface(Tk):
 
 
 		LPRPic.setPath(fileName)
+
+		L = predict.LPRAlg(fileName)
+		charPlatList, colorPlatList = L.getNuCol()
+
+		for group, charList in enumerate(charPlatList):
+			color = colorPlatList[group]
+			# print("[{}]: {}" .format(group, color))
+			if len(charList) > 7:
+				print("Too much character")
+				continue
+			for index, predictCh in enumerate(charList):
+				# print("---->", predictCh)
+				self.entryPlateNumList[index].delete(0, 'end')
+				self.entryPlateNumList[index].insert(0, predictCh)
+				self.entryPlateNumList[index].configure(bg=color, font=("Arial", 24))
+
 		self.imgOri = self.resizePicture(imgCV)
 		if self.imgOri is None:
 			print("Load picture fail!")
@@ -157,10 +175,10 @@ class LPRSurface(Tk):
 			self.labelPlateNum.place(x=0, y=self.labelPicHeight, \
 									 width=self.textWidth * 20, height=self.textHeight)
 
-			# Vehicle Colour Label:
-			self.labelPlateCol = Label(self, text="Vehicle License Plate Color:", anchor=SW)
-			self.labelPlateCol.place(x=0, y=self.labelPicHeight + self.textHeight * 2,
-									 width=self.textWidth * 20, height=self.textHeight)
+			# # Vehicle Colour Label:
+			# self.labelPlateCol = Label(self, text="Vehicle License Plate Color:", anchor=SW)
+			# self.labelPlateCol.place(x=0, y=self.labelPicHeight + self.textHeight * 2,
+			# 						 width=self.textWidth * 20, height=self.textHeight)
 
 		def buttonInit():
 			# Picture Button
@@ -177,17 +195,16 @@ class LPRSurface(Tk):
 
 		def entryInit():
 			# Vehicle Plate Number Output
-			self.entryPlateNumList = []
 			for index in range(7):
 				entryPlateNum = Entry(self)
 				entryPlateNum.place(x=self.textWidth * index * 6, y=self.labelPicHeight + self.textHeight, \
 									width=self.textWidth * 5, height=self.textHeight)
 				self.entryPlateNumList.append(entryPlateNum)
 
-			# Vehicle Plate Color Output
-			self.entryPlateColor = Entry(self)
-			self.entryPlateColor.place(x=0, y=self.labelPicHeight + self.textHeight * 3, \
-									   width=self.textWidth * (42 - 1), height=self.textHeight)
+			# # Vehicle Plate Color Output
+			# self.entryPlateColor = Entry(self)
+			# self.entryPlateColor.place(x=0, y=self.labelPicHeight + self.textHeight * 3, \
+			# 						   width=self.textWidth * (42 - 1), height=self.textHeight)
 
 		labelInit()
 		buttonInit()
